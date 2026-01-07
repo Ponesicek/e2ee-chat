@@ -2,8 +2,12 @@ package com.e2echat.backend;
 
 import com.e2echat.backend.database.Person;
 import com.e2echat.backend.database.PersonRepository;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
 
 @RestController
 public class AuthController {
@@ -13,10 +17,15 @@ public class AuthController {
         this.personRepository = personRepository;
     }
 
+    class registerBody {
+        String username;
+        String publicKey;
+    }
 
-    @RequestMapping("/register")
-    String home() {
-        personRepository.save(new Person("Hello", "world"));
-        return "Hello World!";
+    @PostMapping("/register")
+    @ResponseStatus(HttpStatus.CREATED)
+    String home(@RequestBody registerBody person) {
+        personRepository.save(new Person(person.username, person.publicKey));
+        return "OK";
     }
 }

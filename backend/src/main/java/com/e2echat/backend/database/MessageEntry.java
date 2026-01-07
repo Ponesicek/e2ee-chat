@@ -7,5 +7,16 @@ public class MessageEntry implements Serializable {
     private Long senderId;
     private String content;
 
-    // Constructors, Getters, Setters
+    public MessageEntry(Long senderId, String content) {
+        this.senderId = senderId;
+        this.content = content;
+    }
+
+    public Long getSenderId() {
+        return senderId;
+    }
+
+    public String getContent() {
+        return content;
+    }
 }
