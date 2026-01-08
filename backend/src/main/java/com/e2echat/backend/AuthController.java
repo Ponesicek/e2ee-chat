@@ -17,9 +17,14 @@ public class AuthController {
         this.personRepository = personRepository;
     }
 
-    class registerBody {
+    static class registerBody {
         String username;
         String publicKey;
+
+        public registerBody(String publicKey, String username) {
+            this.publicKey = publicKey;
+            this.username = username;
+        }
     }
 
     @PostMapping("/register")

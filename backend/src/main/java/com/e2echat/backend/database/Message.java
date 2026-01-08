@@ -1,6 +1,6 @@
 package com.e2echat.backend.database;
 
-import jakarta.persistence.*;
+import org.springframework.data.annotation.Id;
 import org.springframework.data.redis.core.RedisHash;
 
 import java.util.List;
@@ -8,6 +8,6 @@ import java.util.List;
 @RedisHash("Session")
 public class Message {
     @Id
-    private String reciever;
+    private Long reciever;
     private List<MessageEntry> entries;
 }
