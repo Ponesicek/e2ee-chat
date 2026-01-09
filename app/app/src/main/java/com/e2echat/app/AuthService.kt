@@ -16,6 +16,7 @@ class AuthService(private val apiService: ApiService, private val cryptoService:
             return null;
         } else {
             cryptoService.deleteMasterKeyPair()
+            Log.e("API", "Registration failed with code ${response.code()}")
             return Exception("Registration failed with code ${response.code()}")
         }
     }

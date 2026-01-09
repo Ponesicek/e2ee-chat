@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "com.e2echat.app"
-        minSdk = 29
+        minSdk = 31
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -60,5 +60,4 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.tink.android)
-
 }
