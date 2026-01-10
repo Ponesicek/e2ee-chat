@@ -41,6 +41,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.e2echat.app.ui.contacts.Contact
 import com.e2echat.app.ui.theme.AppTheme
 import com.google.crypto.tink.config.TinkConfig
@@ -71,7 +74,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var isRegistered by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
-                if (cryptoService.loadKeyPair() != null) {
+                if (cryptoService.getIdentityPublicKey() != null) {
                     isRegistered = true
                 }
             }
@@ -96,6 +99,8 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        val navController = rememberNavController()
+
                         if (!isRegistered)
                             register(authService) { isRegistered = true }
                         else {

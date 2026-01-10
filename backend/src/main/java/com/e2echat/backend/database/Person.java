@@ -2,21 +2,29 @@ package com.e2echat.backend.database;
 
 import jakarta.persistence.*;
 
-import java.util.List;
-
 @Entity
 public class Person {
+
+    public Long getId() {
+        return id;
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
     private String username;
-    private String publicKey;
+    private String masterPublicKey;
+    @Column(length = 2048)
+    private String signedPreKey;
+    @Column(length = 2048)
+    private String signedPreKeySignature;
 
-    public Person(String username, String publicKey) {
+    public Person(String username, String masterPublicKey, String signedPreKey, String signedPreKeySignature) {
         this.username = username;
-        this.publicKey = publicKey;
+        this.masterPublicKey = masterPublicKey;
+        this.signedPreKey = signedPreKey;
+        this.signedPreKeySignature = signedPreKeySignature;
     }
 
     protected Person() {}
@@ -24,9 +32,14 @@ public class Person {
     public String getUsername() {
         return username;
     }
-
-    public String getPublicKey() {
-        return publicKey;
+    public String getMasterPublicKey() {
+        return masterPublicKey;
+    }
+    public String getSignedPreKey() {
+        return signedPreKey;
+    }
+    public String getSignedPreKeySignature() {
+        return signedPreKeySignature;
     }
 }
 
