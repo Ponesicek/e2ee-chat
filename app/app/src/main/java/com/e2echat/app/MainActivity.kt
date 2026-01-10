@@ -46,7 +46,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.e2echat.app.ui.contacts.Contact
 import com.e2echat.app.ui.theme.AppTheme
-import com.google.crypto.tink.config.TinkConfig
 import com.google.gson.GsonBuilder
 import com.google.gson.Strictness
 import kotlinx.coroutines.launch
@@ -57,7 +56,6 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        TinkConfig.register()
         val gson = GsonBuilder()
             .setStrictness(Strictness.LENIENT)
             .create()
@@ -68,7 +66,7 @@ class MainActivity : ComponentActivity() {
             .build()
 
         val apiService = retrofit.create(ApiService::class.java)
-        val cryptoService = CryptoService()
+        val cryptoService = CryptoService(applicationContext)
         val authService = AuthService(apiService, cryptoService)
         enableEdgeToEdge()
         setContent {

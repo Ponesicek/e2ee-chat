@@ -11,7 +11,6 @@ interface ApiService {
     data class RegisterRequest(
         val username: String,
         val masterPublicKey: String,
-        val masterSignedPublicKey: String,
         val prekeys: Array<String> = arrayOf(),
     )
 

@@ -20,7 +20,7 @@ public class AuthController {
         this.prekeyRepository = prekeyRepository;
     }
 
-    public record RegisterBody(String username, String masterPublicKey, String masterSignedPublicKey, String[] prekeys) {}
+    public record RegisterBody(String username, String masterPublicKey, String[] prekeys) {}
 
     /**
      * Returns public key or 404 for username
@@ -38,7 +38,7 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<String> register(@RequestBody RegisterBody person) {
         if(person.prekeys.length != 10) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid prekeys ammount");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid prekeys amount");
         }
         if (personRepository.findByUsername(person.username()).isPresent()) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body("User already exists");

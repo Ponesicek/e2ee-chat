@@ -60,5 +60,6 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-    implementation(libs.tink.android)
+    implementation(libs.bouncycastle.prov)
+    implementation(libs.bouncycastle.pkix)
 }
