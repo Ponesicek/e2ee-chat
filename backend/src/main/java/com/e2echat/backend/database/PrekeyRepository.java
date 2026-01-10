@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface PrekeyRepository extends Repository<Prekey, Long> {
     Prekey save(Prekey prekey);
     List<Prekey> saveAll(Iterable<Prekey> prekeys);
+    Optional<List<Prekey>> findAllByPerson(Person person);
+    void delete(Prekey prekey);
 }

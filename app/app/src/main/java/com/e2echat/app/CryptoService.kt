@@ -79,15 +79,7 @@ class CryptoService(context: Context) {
         prefsStore.getPublicKey(KeyAliases.IDENTITY)
     }
 
-    suspend fun encryptMessage(
-        message: String,
-        recipientUsername: String,
-        publicKey: String,
-    ): String = withContext(Dispatchers.IO) {
-        val recipientPublicKeyBytes: ByteArray = Base64.decode(publicKey, Base64.NO_WRAP)
-        val payload = message.toByteArray()
-        Base64.encodeToString(payload, Base64.NO_WRAP)
-    }
+    // TODO: Implement message encryption after X3DH handshake is complete
 }
 
 private object KeyAliases {

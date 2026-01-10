@@ -1,10 +1,9 @@
 package com.e2echat.app.ui.contacts
 
+import java.util.UUID
+
 data class Contact(
-    val id: String,
+    val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val status: String = "Hey there! I am using E2EChat",
-    val avatarInitial: Char = name.firstOrNull()?.uppercaseChar() ?: '?',
-    val isOnline: Boolean = false,
-    val lastSeen: String = ""
+    val lastMessage: String = ""
 )
