@@ -1,6 +1,7 @@
 package com.e2echat.app
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -81,7 +82,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text("E2EE Chat") }
+                            title = { Text("Opaque") }
                         )
                     },
                     floatingActionButton = {
@@ -112,10 +113,30 @@ class MainActivity : ComponentActivity() {
                     AddContactDialog(
                         onDismiss = { showAddContactDialog = false },
                         onAddContact = { name ->
-                            val newContact = Contact(name = name)
-                            contactsRepository.addContact(newContact)
-                            contacts = contactsRepository.getContacts()
-                            showAddContactDialog = false
+                            lifecycleScope.launch {
+                                val response = apiService.getKeys(name)
+                                if (response.isSuccessful && response.body() != null) {
+                                    val keys = response.body()!!
+                                    val newContact = Contact(
+                                        name = name,
+                                        identityKey = keys.IdentityKey,
+                                        signedPreKey = keys.SignedPreKey,
+                                        signedPreKeySignature = keys.SignedPreKeySignature,
+                                        oneTimePreKey = keys.OneTimePreKey,
+                                        preKeyId = keys.PreKeyID
+                                    )
+                                    contactsRepository.addContact(newContact)
+                                    contacts = contactsRepository.getContacts()
+                                }
+                                else {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Error: ${response.code()}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                showAddContactDialog = false
+                            }
                         }
                     )
                 }
@@ -190,7 +211,6 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun AddContactDialog(onDismiss: () -> Unit, onAddContact: (String) -> Unit) {
         var name by remember { mutableStateOf("") }
-        
         AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text("Add Contact") },

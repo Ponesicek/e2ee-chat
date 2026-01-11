@@ -14,10 +14,19 @@ interface ApiService {
         val prekeys: Array<String> = arrayOf(),
     )
 
+    data class KeysResponse(
+        val IdentityKey: String,
+        val SignedPreKey: String,
+        val SignedPreKeySignature: String,
+        val OneTimePreKey: String,
+        val PreKeyID: String
+    )
+
     @Headers("Content-Type: application/json")
     @POST("register")
     suspend fun register(@Body registerRequest: RegisterRequest): Response<String>
 
-    @GET("publickey")
-    suspend fun getPublicKey(@Query("username") username: String): Response<String>
+    @Headers("Content-Type: application/json")
+    @GET("getkeys")
+    suspend fun getKeys(@Query("username") username: String): Response<KeysResponse>
 }

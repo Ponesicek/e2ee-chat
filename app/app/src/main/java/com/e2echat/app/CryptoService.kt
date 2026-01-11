@@ -249,3 +249,176 @@ private class KeystoreAesGcm(
         return keyGenerator.generateKey()
     }
 }
+
+data class X3DHResult(
+    val sharedSecret: ByteArray,
+    val ephemeralPublicKey: String,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is X3DHResult) return false
+        return sharedSecret.contentEquals(other.sharedSecret) && ephemeralPublicKey == other.ephemeralPublicKey
+    }
+
+    override fun hashCode(): Int = 31 * sharedSecret.contentHashCode() + ephemeralPublicKey.hashCode()
+}
+
+sealed class X3DHError : Exception() {
+    data object InvalidSignature : X3DHError()
+    data object MissingKeys : X3DHError()
+}
+
+class X3DHHandshake private constructor(
+    private val sharedSecret: ByteArray,
+    private val ephemeralPublicKey: String,
+) {
+
+    fun getResult(): X3DHResult = X3DHResult(sharedSecret, ephemeralPublicKey)
+
+    companion object Factory {
+        private const val HKDF_INFO = "X3DH"
+        private const val SHARED_SECRET_LENGTH = 32
+
+        fun initiate(
+            myIdentityPrivateKey: ByteArray,
+            theirIdentityPublicKey: ByteArray,
+            theirSignedPreKey: ByteArray,
+            theirSignedPreKeySignature: ByteArray,
+            theirOneTimePreKey: ByteArray?,
+        ): Result<X3DHHandshake> {
+            if (!verifySignedPreKey(theirIdentityPublicKey, theirSignedPreKey, theirSignedPreKeySignature)) {
+                return Result.failure(X3DHError.InvalidSignature)
+            }
+
+            val ephemeralKeyPair = generateEphemeralKeyPair()
+            val ephemeralPrivateKey = ephemeralKeyPair.privateKeyBytes
+            val ephemeralPublicKey = ephemeralKeyPair.publicKeyBytes
+
+            val myIdentityKeyX25519 = convertEd25519PrivateToX25519(myIdentityPrivateKey)
+
+            val dh1 = x25519Agreement(myIdentityKeyX25519, theirSignedPreKey)
+            val theirIdentityKeyX25519 = convertEd25519PublicToX25519(theirIdentityPublicKey)
+            val dh2 = x25519Agreement(ephemeralPrivateKey, theirIdentityKeyX25519)
+            val dh3 = if (theirOneTimePreKey != null) {
+                x25519Agreement(ephemeralPrivateKey, theirOneTimePreKey)
+            } else {
+                ByteArray(0)
+            }
+
+            val concatenatedSecrets = dh1 + dh2 + dh3
+            val sharedSecret = hkdf(concatenatedSecrets, SHARED_SECRET_LENGTH)
+
+            val ephemeralPublicKeyBase64 = Base64.encodeToString(ephemeralPublicKey, Base64.NO_WRAP)
+
+            return Result.success(X3DHHandshake(sharedSecret, ephemeralPublicKeyBase64))
+        }
+
+        fun initiateFromContact(
+            myIdentityPrivateKey: ByteArray,
+            theirIdentityPublicKey: String,
+            theirSignedPreKey: String,
+            theirSignedPreKeySignature: String,
+            theirOneTimePreKey: String?,
+        ): Result<X3DHHandshake> {
+            return initiate(
+                myIdentityPrivateKey = myIdentityPrivateKey,
+                theirIdentityPublicKey = Base64.decode(theirIdentityPublicKey, Base64.NO_WRAP),
+                theirSignedPreKey = Base64.decode(theirSignedPreKey, Base64.NO_WRAP),
+                theirSignedPreKeySignature = Base64.decode(theirSignedPreKeySignature, Base64.NO_WRAP),
+                theirOneTimePreKey = theirOneTimePreKey?.let { Base64.decode(it, Base64.NO_WRAP) },
+            )
+        }
+
+        private fun verifySignedPreKey(
+            identityPublicKey: ByteArray,
+            signedPreKey: ByteArray,
+            signature: ByteArray,
+        ): Boolean {
+            return try {
+                val verifier = Ed25519Signer().apply {
+                    init(false, Ed25519PublicKeyParameters(identityPublicKey, 0))
+                }
+                verifier.update(signedPreKey, 0, signedPreKey.size)
+                verifier.verifySignature(signature)
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        private fun generateEphemeralKeyPair(): GeneratedKeyPair {
+            val keyGen = X25519KeyPairGenerator().apply {
+                init(X25519KeyGenerationParameters(SecureRandom()))
+            }
+            val keyPair = keyGen.generateKeyPair()
+            val privateKey = keyPair.private as X25519PrivateKeyParameters
+            val publicKey = keyPair.public as X25519PublicKeyParameters
+            return GeneratedKeyPair(publicKey.encoded, privateKey.encoded)
+        }
+
+        private fun x25519Agreement(privateKey: ByteArray, publicKey: ByteArray): ByteArray {
+            val privateKeyParams = X25519PrivateKeyParameters(privateKey, 0)
+            val publicKeyParams = X25519PublicKeyParameters(publicKey, 0)
+            val sharedSecret = ByteArray(32)
+            privateKeyParams.generateSecret(publicKeyParams, sharedSecret, 0)
+            return sharedSecret
+        }
+
+        private fun convertEd25519PrivateToX25519(ed25519Private: ByteArray): ByteArray {
+            val ed25519Params = Ed25519PrivateKeyParameters(ed25519Private, 0)
+            val hash = org.bouncycastle.crypto.digests.SHA512Digest()
+            val h = ByteArray(64)
+            hash.update(ed25519Params.encoded, 0, 32)
+            hash.doFinal(h, 0)
+
+            h[0] = (h[0].toInt() and 248).toByte()
+            h[31] = (h[31].toInt() and 127).toByte()
+            h[31] = (h[31].toInt() or 64).toByte()
+
+            return h.copyOf(32)
+        }
+
+        private fun convertEd25519PublicToX25519(ed25519Public: ByteArray): ByteArray {
+            val edPoint = Ed25519PublicKeyParameters(ed25519Public, 0)
+            val edY = org.bouncycastle.math.ec.rfc8032.Ed25519.decodePointVar(edPoint.encoded, 0, false, IntArray(8))
+            val xPoint = ByteArray(32)
+            org.bouncycastle.math.ec.rfc7748.X25519Field.decode(edY, 0, IntArray(10))
+
+            val y = java.math.BigInteger(1, ed25519Public.reversedArray())
+            val one = java.math.BigInteger.ONE
+            val p = java.math.BigInteger("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed", 16)
+
+            val numerator = one.add(y).mod(p)
+            val denominator = one.subtract(y).mod(p)
+            val u = numerator.multiply(denominator.modInverse(p)).mod(p)
+
+            val uBytes = u.toByteArray()
+            val result = ByteArray(32)
+            val sourceLen = minOf(uBytes.size, 32)
+            val sourceStart = if (uBytes.size > 32) uBytes.size - 32 else 0
+            val destStart = 32 - sourceLen
+
+            for (i in 0 until sourceLen) {
+                result[31 - destStart - i] = uBytes[sourceStart + i]
+            }
+
+            return result
+        }
+
+        private fun hkdf(inputKeyMaterial: ByteArray, length: Int): ByteArray {
+            val salt = ByteArray(32)
+            val hkdf = org.bouncycastle.crypto.generators.HKDFBytesGenerator(
+                org.bouncycastle.crypto.digests.SHA256Digest()
+            )
+            hkdf.init(
+                org.bouncycastle.crypto.params.HKDFParameters(
+                    inputKeyMaterial,
+                    salt,
+                    HKDF_INFO.toByteArray()
+                )
+            )
+            val output = ByteArray(length)
+            hkdf.generateBytes(output, 0, length)
+            return output
+        }
+    }
+}
