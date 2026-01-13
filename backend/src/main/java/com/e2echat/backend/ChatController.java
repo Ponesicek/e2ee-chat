@@ -9,6 +9,7 @@ import com.e2echat.backend.database.HandshakeBundleRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SubscribeMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,12 +25,15 @@ public class ChatController {
     private final PersonRepository personRepository;
     private final PrekeyRepository prekeyRepository;
     private final HandshakeBundleRepository handshakeBundleRepository;
+    private final SimpMessagingTemplate messagingTemplate;
     
     public ChatController(PersonRepository personRepository, PrekeyRepository prekeyRepository, 
-                         HandshakeBundleRepository handshakeBundleRepository) {
+                         HandshakeBundleRepository handshakeBundleRepository,
+                         SimpMessagingTemplate messagingTemplate) {
         this.personRepository = personRepository;
         this.prekeyRepository = prekeyRepository;
         this.handshakeBundleRepository = handshakeBundleRepository;
+        this.messagingTemplate = messagingTemplate;
     }
 
     public record KeysResponse(String IdentityKey, String SignedPreKey, String SignedPreKeySignature, String OneTimePreKey, String PreKeyID) {}
@@ -55,6 +59,15 @@ public class ChatController {
             request.usedOneTimePreKeyId
         );
         handshakeBundleRepository.save(bundle);
+        
+        HandshakeBundleResponse response = new HandshakeBundleResponse(
+            request.senderUsername,
+            request.ephemeralKey,
+            request.identityKey,
+            request.usedOneTimePreKeyId
+        );
+        messagingTemplate.convertAndSend("/app/topic/messages." + request.recipientUsername, List.of(response));
+        
         return ResponseEntity.status(HttpStatus.CREATED).body("OK");
     }
 
@@ -93,7 +106,7 @@ public class ChatController {
     }
 
     @SubscribeMapping("/topic/messages.{username}")
-    public List<HandshakeBundleResponse> pullHandshakesAndMessages(@DestinationVariable String username) {
+    public List<HandshakeBundleResponse> InitWS(@DestinationVariable String username) {
         System.out.println("Pulling handshakes for " + username);
         List<HandshakeBundle> bundles = handshakeBundleRepository.findAllByRecipientUsername(username);
         List<HandshakeBundleResponse> responses = bundles.stream()
