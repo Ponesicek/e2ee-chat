@@ -37,9 +37,9 @@ class ChatActivity : ComponentActivity() {
                 val session = cryptoService.getSession(contactId)
                 if (session != null) {
                     val secretBase64 = Base64.encodeToString(session.sharedSecret, Base64.NO_WRAP)
-                    runOnUiThread {
-                        Toast.makeText(this@ChatActivity, "Shared secret: $secretBase64", Toast.LENGTH_LONG).show()
-                    }
+//                    runOnUiThread {
+//                        Toast.makeText(this@ChatActivity, "Shared secret: $secretBase64", Toast.LENGTH_LONG).show()
+//                    }
                 }
             }
             

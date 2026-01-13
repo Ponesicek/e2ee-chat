@@ -402,6 +402,11 @@ class X3DHHandshake private constructor(
                 ByteArray(0)
             }
 
+//            android.util.Log.d("X3DH-INITIATE", "DH1: ${Base64.encodeToString(dh1, Base64.NO_WRAP)}")
+//            android.util.Log.d("X3DH-INITIATE", "DH2: ${Base64.encodeToString(dh2, Base64.NO_WRAP)}")
+//            android.util.Log.d("X3DH-INITIATE", "DH3: ${Base64.encodeToString(dh3, Base64.NO_WRAP)}")
+//            android.util.Log.d("X3DH-INITIATE", "OTP used: ${theirOneTimePreKey != null}")
+
             val concatenatedSecrets = dh1 + dh2 + dh3
             val sharedSecret = hkdf(concatenatedSecrets, SHARED_SECRET_LENGTH)
 
@@ -446,6 +451,11 @@ class X3DHHandshake private constructor(
             } else {
                 ByteArray(0)
             }
+
+            android.util.Log.d("X3DH-RESPOND", "DH1: ${Base64.encodeToString(dh1, Base64.NO_WRAP)}")
+            android.util.Log.d("X3DH-RESPOND", "DH2: ${Base64.encodeToString(dh2, Base64.NO_WRAP)}")
+            android.util.Log.d("X3DH-RESPOND", "DH3: ${Base64.encodeToString(dh3, Base64.NO_WRAP)}")
+            android.util.Log.d("X3DH-RESPOND", "OTP used: ${myOneTimePreKeyPrivate != null}")
 
             val concatenatedSecrets = dh1 + dh2 + dh3
             val sharedSecret = hkdf(concatenatedSecrets, SHARED_SECRET_LENGTH)
@@ -506,7 +516,9 @@ class X3DHHandshake private constructor(
         }
 
         private fun convertEd25519PublicToX25519(ed25519Public: ByteArray): ByteArray {
-            val y = java.math.BigInteger(1, ed25519Public.reversedArray())
+            val pubBytes = ed25519Public.copyOf()
+            pubBytes[31] = (pubBytes[31].toInt() and 0x7F).toByte() // Clear sign bit
+            val y = java.math.BigInteger(1, pubBytes.reversedArray())
             val one = java.math.BigInteger.ONE
             val p = java.math.BigInteger("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed", 16)
 
