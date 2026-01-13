@@ -8,15 +8,13 @@ import com.e2echat.backend.database.HandshakeBundle;
 import com.e2echat.backend.database.HandshakeBundleRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
+import org.springframework.messaging.simp.annotation.SubscribeMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.handler.annotation.SendTo;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.util.HtmlUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -94,12 +92,16 @@ public class ChatController {
         return ResponseEntity.ok(new KeysResponse(person.getMasterPublicKey(), person.getSignedPreKey(), person.getSignedPreKeySignature(), prekey.getPrekey(), prekey.getPrekeyId()+""));
     }
 
-
-    @MessageMapping("/hello")
-    @SendTo("/topic/greetings")
-    public String WS() throws Exception {
-        Thread.sleep(1000); // simulated delay
-        return "Ok";
+    @SubscribeMapping("/topic/messages.{username}")
+    public List<HandshakeBundleResponse> pullHandshakesAndMessages(@DestinationVariable String username) {
+        System.out.println("Pulling handshakes for " + username);
+        List<HandshakeBundle> bundles = handshakeBundleRepository.findAllByRecipientUsername(username);
+        List<HandshakeBundleResponse> responses = bundles.stream()
+                .map(b -> new HandshakeBundleResponse(b.getSenderUsername(), b.getEphemeralKey(),
+                        b.getIdentityKey(), b.getUsedOneTimePreKeyId()))
+                .toList();
+        bundles.forEach(handshakeBundleRepository::delete);
+        return responses;
     }
 
 }

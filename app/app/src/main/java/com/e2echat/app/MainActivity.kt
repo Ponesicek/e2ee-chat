@@ -46,6 +46,7 @@ import com.e2echat.app.ui.contacts.ContactsRepository
 import com.e2echat.app.ui.theme.AppTheme
 import com.google.gson.GsonBuilder
 import com.google.gson.Strictness
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.launch
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -87,8 +88,13 @@ class MainActivity : ComponentActivity() {
                         onConnected = {
                             val username = authService.getUsername()
                             if (username != null) {
-                                stompService.subscribe("/topic/messages.$username") { message ->
+                                stompService.subscribe("/app/topic/messages.$username") { message ->
                                     android.util.Log.d("STOMP", "Received message: $message")
+                                    lifecycleScope.launch {
+                                        processIncomingHandshakes(message, gson, cryptoService, contactsRepository) {
+                                            contacts = contactsRepository.getContacts()
+                                        }
+                                    }
                                 }
                             }
                         },
@@ -276,6 +282,63 @@ class MainActivity : ComponentActivity() {
             putExtra(ChatActivity.EXTRA_CONTACT_NAME, contact.name)
         }
         startActivity(intent)
+    }
+
+    private suspend fun processIncomingHandshakes(
+        message: String,
+        gson: com.google.gson.Gson,
+        cryptoService: CryptoService,
+        contactsRepository: ContactsRepository,
+        onContactsUpdated: () -> Unit
+    ) {
+        try {
+            val type = object : TypeToken<List<ApiService.HandshakeBundleResponse>>() {}.type
+            val handshakes: List<ApiService.HandshakeBundleResponse> = gson.fromJson(message, type)
+
+            for (handshake in handshakes) {
+                val existingContact = contactsRepository.getContacts().find { it.name == handshake.senderUsername }
+                if (existingContact?.hasSession == true) {
+                    android.util.Log.d("X3DH", "Session already exists for ${handshake.senderUsername}")
+                    continue
+                }
+
+                val result = cryptoService.respondToX3DH(
+                    theirIdentityKey = handshake.identityKey,
+                    theirEphemeralKey = handshake.ephemeralKey,
+                    usedOneTimePreKeyId = handshake.usedOneTimePreKeyId
+                )
+
+                result.onSuccess { x3dhResult ->
+                    val contact = existingContact?.copy(
+                        identityKey = handshake.identityKey,
+                        hasSession = true
+                    ) ?: Contact(
+                        name = handshake.senderUsername,
+                        identityKey = handshake.identityKey,
+                        hasSession = true
+                    )
+
+                    cryptoService.storeSession(
+                        contactId = contact.id,
+                        sharedSecret = x3dhResult.sharedSecret,
+                        ephemeralPublicKey = x3dhResult.ephemeralPublicKey
+                    )
+
+                    if (existingContact != null) {
+                        contactsRepository.updateContact(contact)
+                    } else {
+                        contactsRepository.addContact(contact)
+                    }
+
+                    android.util.Log.d("X3DH", "Session established with ${handshake.senderUsername}")
+                    runOnUiThread { onContactsUpdated() }
+                }.onFailure { error ->
+                    android.util.Log.e("X3DH", "Failed to process handshake from ${handshake.senderUsername}: ${error.message}")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("X3DH", "Failed to parse handshakes: ${e.message}")
+        }
     }
 
     @Composable

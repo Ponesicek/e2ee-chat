@@ -111,6 +111,34 @@ class CryptoService(context: Context) {
     suspend fun hasSession(contactId: String): Boolean = withContext(Dispatchers.IO) {
         prefsStore.hasSession(contactId)
     }
+
+    suspend fun respondToX3DH(
+        theirIdentityKey: String,
+        theirEphemeralKey: String,
+        usedOneTimePreKeyId: String?,
+    ): Result<X3DHResult> = withContext(Dispatchers.IO) {
+        val mySignedPreKeyPrivate = prefsStore.getPrivateKeyBytes(KeyAliases.SIGNED_PREKEY)
+        val myIdentityPrivateKey = getIdentityPrivateKey()
+        val myOneTimePreKeyPrivate = usedOneTimePreKeyId?.toIntOrNull()?.let { index ->
+            try {
+                prefsStore.getPrivateKeyBytes(KeyAliases.oneTimePreKey(index))
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        X3DHHandshake.respond(
+            myIdentityPrivateKey = myIdentityPrivateKey,
+            mySignedPreKeyPrivate = mySignedPreKeyPrivate,
+            myOneTimePreKeyPrivate = myOneTimePreKeyPrivate,
+            theirIdentityPublicKey = theirIdentityKey,
+            theirEphemeralPublicKey = theirEphemeralKey,
+        )
+    }
+
+    suspend fun getSignedPreKeyPublic(): String? = withContext(Dispatchers.IO) {
+        prefsStore.getPublicKey(KeyAliases.SIGNED_PREKEY)
+    }
 }
 
 private object KeyAliases {
@@ -396,6 +424,33 @@ class X3DHHandshake private constructor(
                 theirSignedPreKeySignature = Base64.decode(theirSignedPreKeySignature, Base64.NO_WRAP),
                 theirOneTimePreKey = theirOneTimePreKey?.let { Base64.decode(it, Base64.NO_WRAP) },
             )
+        }
+
+        fun respond(
+            myIdentityPrivateKey: ByteArray,
+            mySignedPreKeyPrivate: ByteArray,
+            myOneTimePreKeyPrivate: ByteArray?,
+            theirIdentityPublicKey: String,
+            theirEphemeralPublicKey: String,
+        ): Result<X3DHResult> {
+            val theirIdentityBytes = Base64.decode(theirIdentityPublicKey, Base64.NO_WRAP)
+            val theirEphemeralBytes = Base64.decode(theirEphemeralPublicKey, Base64.NO_WRAP)
+
+            val myIdentityKeyX25519 = convertEd25519PrivateToX25519(myIdentityPrivateKey)
+            val theirIdentityKeyX25519 = convertEd25519PublicToX25519(theirIdentityBytes)
+
+            val dh1 = x25519Agreement(mySignedPreKeyPrivate, theirIdentityKeyX25519)
+            val dh2 = x25519Agreement(myIdentityKeyX25519, theirEphemeralBytes)
+            val dh3 = if (myOneTimePreKeyPrivate != null) {
+                x25519Agreement(myOneTimePreKeyPrivate, theirEphemeralBytes)
+            } else {
+                ByteArray(0)
+            }
+
+            val concatenatedSecrets = dh1 + dh2 + dh3
+            val sharedSecret = hkdf(concatenatedSecrets, SHARED_SECRET_LENGTH)
+
+            return Result.success(X3DHResult(sharedSecret, theirEphemeralPublicKey))
         }
 
         //OK
