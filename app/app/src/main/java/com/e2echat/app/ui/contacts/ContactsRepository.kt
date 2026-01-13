@@ -32,6 +32,19 @@ class ContactsRepository(context: Context) {
         saveContacts(contacts)
     }
 
+    fun updateContact(contact: Contact) {
+        val contacts = getContacts().toMutableList()
+        val index = contacts.indexOfFirst { it.id == contact.id }
+        if (index >= 0) {
+            contacts[index] = contact
+            saveContacts(contacts)
+        }
+    }
+
+    fun getContactById(id: String): Contact? {
+        return getContacts().find { it.id == id }
+    }
+
     private fun saveContacts(contacts: List<Contact>) {
         val json = gson.toJson(contacts)
         prefs.edit { putString(CONTACTS_KEY, json) }

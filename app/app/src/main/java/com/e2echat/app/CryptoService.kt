@@ -79,7 +79,38 @@ class CryptoService(context: Context) {
         prefsStore.getPublicKey(KeyAliases.IDENTITY)
     }
 
-    // TODO: Implement message encryption after X3DH handshake is complete
+    suspend fun getIdentityPrivateKey(): ByteArray = withContext(Dispatchers.IO) {
+        prefsStore.getPrivateKeyBytes(KeyAliases.IDENTITY)
+    }
+
+    suspend fun performX3DHHandshake(
+        theirIdentityKey: String,
+        theirSignedPreKey: String,
+        theirSignedPreKeySignature: String,
+        theirOneTimePreKey: String?,
+    ): Result<X3DHResult> = withContext(Dispatchers.IO) {
+        val myIdentityPrivateKey = getIdentityPrivateKey()
+        X3DHHandshake.initiateFromContact(
+            myIdentityPrivateKey = myIdentityPrivateKey,
+            theirIdentityPublicKey = theirIdentityKey,
+            theirSignedPreKey = theirSignedPreKey,
+            theirSignedPreKeySignature = theirSignedPreKeySignature,
+            theirOneTimePreKey = theirOneTimePreKey,
+        ).map { it.getResult() }
+    }
+
+    suspend fun storeSession(contactId: String, sharedSecret: ByteArray, ephemeralPublicKey: String) = withContext(Dispatchers.IO) {
+        val (encryptedSecret, iv) = prefsStore.encryptData(sharedSecret)
+        prefsStore.storeSession(contactId, encryptedSecret, iv, ephemeralPublicKey)
+    }
+
+    suspend fun getSession(contactId: String): X3DHResult? = withContext(Dispatchers.IO) {
+        prefsStore.getSession(contactId)
+    }
+
+    suspend fun hasSession(contactId: String): Boolean = withContext(Dispatchers.IO) {
+        prefsStore.hasSession(contactId)
+    }
 }
 
 private object KeyAliases {
@@ -193,17 +224,55 @@ private class PrefsKeyStore(
 
     fun clearAll() {
         prefs().edit { clear() }
+        sessionPrefs().edit { clear() }
         wrappingKeyStore.deleteKey()
+    }
+
+    fun encryptData(data: ByteArray): Pair<ByteArray, ByteArray> {
+        return wrappingKeyStore.encrypt(data)
+    }
+
+    fun storeSession(contactId: String, encryptedSecret: ByteArray, iv: ByteArray, ephemeralPublicKey: String) {
+        sessionPrefs().edit {
+            putString(sessionSecretKey(contactId), Base64.encodeToString(encryptedSecret, Base64.NO_WRAP))
+            putString(sessionIvKey(contactId), Base64.encodeToString(iv, Base64.NO_WRAP))
+            putString(sessionEphemeralKey(contactId), ephemeralPublicKey)
+        }
+    }
+
+    fun getSession(contactId: String): X3DHResult? {
+        val encryptedSecretBase64 = sessionPrefs().getString(sessionSecretKey(contactId), null) ?: return null
+        val ivBase64 = sessionPrefs().getString(sessionIvKey(contactId), null) ?: return null
+        val ephemeralPublicKey = sessionPrefs().getString(sessionEphemeralKey(contactId), null) ?: return null
+
+        val sharedSecret = wrappingKeyStore.decrypt(
+            ciphertext = Base64.decode(encryptedSecretBase64, Base64.NO_WRAP),
+            iv = Base64.decode(ivBase64, Base64.NO_WRAP),
+        )
+        return X3DHResult(sharedSecret, ephemeralPublicKey)
+    }
+
+    fun hasSession(contactId: String): Boolean {
+        return sessionPrefs().contains(sessionSecretKey(contactId))
     }
 
     private fun prefs(): SharedPreferences =
         context.getSharedPreferences("crypto_keys", Context.MODE_PRIVATE)
+
+    private fun sessionPrefs(): SharedPreferences =
+        context.getSharedPreferences("crypto_sessions", Context.MODE_PRIVATE)
 
     private fun publicKeyPrefKey(alias: String): String = "pub:$alias"
 
     private fun privateKeyPrefKey(alias: String): String = "priv:$alias"
 
     private fun ivPrefKey(alias: String): String = "iv:$alias"
+
+    private fun sessionSecretKey(contactId: String): String = "session_secret:$contactId"
+
+    private fun sessionIvKey(contactId: String): String = "session_iv:$contactId"
+
+    private fun sessionEphemeralKey(contactId: String): String = "session_ephemeral:$contactId"
 }
 
 private class KeystoreAesGcm(

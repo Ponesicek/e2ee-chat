@@ -62,4 +62,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.bouncycastle.prov)
     implementation(libs.bouncycastle.pkix)
+    implementation(libs.stomp.protocol)
+    implementation(libs.okhttp)
+    implementation(libs.rxjava)
+    implementation(libs.rxandroid)
 }

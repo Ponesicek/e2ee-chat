@@ -10,5 +10,6 @@ data class Contact(
     val signedPreKey: String? = null,
     val signedPreKeySignature: String? = null,
     val oneTimePreKey: String? = null,
-    val preKeyId: String? = null
+    val preKeyId: String? = null,
+    val hasSession: Boolean = false
 )

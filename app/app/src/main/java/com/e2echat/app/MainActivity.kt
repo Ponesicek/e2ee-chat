@@ -1,5 +1,6 @@
 package com.e2echat.app
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -30,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,8 +65,9 @@ class MainActivity : ComponentActivity() {
 
         val apiService = retrofit.create(ApiService::class.java)
         val cryptoService = CryptoService(applicationContext)
-        val authService = AuthService(apiService, cryptoService)
+        val authService = AuthService(applicationContext, apiService, cryptoService)
         val contactsRepository = ContactsRepository(applicationContext)
+        val stompService = StompService("https://hackclub.ponesicek.com/")
         
         enableEdgeToEdge()
         setContent {
@@ -75,6 +78,27 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 if (cryptoService.getIdentityPublicKey() != null) {
                     isRegistered = true
+                }
+            }
+            
+            DisposableEffect(isRegistered) {
+                if (isRegistered) {
+                    stompService.connect(
+                        onConnected = {
+                            val username = authService.getUsername()
+                            if (username != null) {
+                                stompService.subscribe("/topic/messages.$username") { message ->
+                                    android.util.Log.d("STOMP", "Received message: $message")
+                                }
+                            }
+                        },
+                        onError = { error ->
+                            android.util.Log.e("STOMP", "Connection error", error)
+                        }
+                    )
+                }
+                onDispose {
+                    stompService.disconnect()
                 }
             }
             
@@ -104,7 +128,65 @@ class MainActivity : ComponentActivity() {
                         if (!isRegistered) {
                             RegisterScreen(authService) { isRegistered = true }
                         } else {
-                            ContactsScreen(contacts)
+                            ContactsScreen(contacts) { contact ->
+                                if (contact.hasSession) {
+                                    openChat(contact)
+                                } else {
+                                    lifecycleScope.launch {
+                                        if (contact.identityKey == null || contact.signedPreKey == null || contact.signedPreKeySignature == null) {
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Missing keys for ${contact.name}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            return@launch
+                                        }
+                                        
+                                        val result = cryptoService.performX3DHHandshake(
+                                            theirIdentityKey = contact.identityKey,
+                                            theirSignedPreKey = contact.signedPreKey,
+                                            theirSignedPreKeySignature = contact.signedPreKeySignature,
+                                            theirOneTimePreKey = contact.oneTimePreKey,
+                                        )
+                                        
+                                        result.onSuccess { x3dhResult ->
+                                            cryptoService.storeSession(
+                                                contactId = contact.id,
+                                                sharedSecret = x3dhResult.sharedSecret,
+                                                ephemeralPublicKey = x3dhResult.ephemeralPublicKey
+                                            )
+                                            
+                                            val myUsername = authService.getUsername()
+                                            val myIdentityKey = cryptoService.getIdentityPublicKey()
+                                            if (myUsername != null && myIdentityKey != null) {
+                                                val handshakeBundle = ApiService.HandshakeBundleRequest(
+                                                    recipientUsername = contact.name,
+                                                    senderUsername = myUsername,
+                                                    ephemeralKey = x3dhResult.ephemeralPublicKey,
+                                                    identityKey = myIdentityKey,
+                                                    usedOneTimePreKeyId = contact.preKeyId
+                                                )
+                                                apiService.submitHandshake(handshakeBundle)
+                                            }
+                                            
+                                            contactsRepository.updateContact(contact.copy(hasSession = true))
+                                            contacts = contactsRepository.getContacts()
+                                            openChat(contact.copy(hasSession = true))
+                                        }.onFailure { error ->
+                                            val message = when (error) {
+                                                is X3DHError.InvalidSignature -> "Invalid signature from ${contact.name}"
+                                                is X3DHError.MissingKeys -> "Missing keys"
+                                                else -> "Handshake failed: ${error.message}"
+                                            }
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                message,
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -125,8 +207,52 @@ class MainActivity : ComponentActivity() {
                                         oneTimePreKey = keys.OneTimePreKey,
                                         preKeyId = keys.PreKeyID
                                     )
-                                    contactsRepository.addContact(newContact)
-                                    contacts = contactsRepository.getContacts()
+                                    
+                                    val handshakeResult = cryptoService.performX3DHHandshake(
+                                        theirIdentityKey = keys.IdentityKey,
+                                        theirSignedPreKey = keys.SignedPreKey,
+                                        theirSignedPreKeySignature = keys.SignedPreKeySignature,
+                                        theirOneTimePreKey = keys.OneTimePreKey,
+                                    )
+                                    
+                                    handshakeResult.onSuccess { x3dhResult ->
+                                        cryptoService.storeSession(
+                                            contactId = newContact.id,
+                                            sharedSecret = x3dhResult.sharedSecret,
+                                            ephemeralPublicKey = x3dhResult.ephemeralPublicKey
+                                        )
+                                        
+                                        val myUsername = authService.getUsername()
+                                        val myIdentityKey = cryptoService.getIdentityPublicKey()
+                                        if (myUsername != null && myIdentityKey != null) {
+                                            val handshakeBundle = ApiService.HandshakeBundleRequest(
+                                                recipientUsername = name,
+                                                senderUsername = myUsername,
+                                                ephemeralKey = x3dhResult.ephemeralPublicKey,
+                                                identityKey = myIdentityKey,
+                                                usedOneTimePreKeyId = keys.PreKeyID
+                                            )
+                                            apiService.submitHandshake(handshakeBundle)
+                                        }
+                                        
+                                        contactsRepository.addContact(newContact.copy(hasSession = true))
+                                        contacts = contactsRepository.getContacts()
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Added ${name} with secure session",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }.onFailure { error ->
+                                        val message = when (error) {
+                                            is X3DHError.InvalidSignature -> "Invalid signature from ${name}"
+                                            else -> "Handshake failed: ${error.message}"
+                                        }
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            message,
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
                                 else {
                                     Toast.makeText(
@@ -142,6 +268,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+    
+    private fun openChat(contact: Contact) {
+        val intent = Intent(this, ChatActivity::class.java).apply {
+            putExtra(ChatActivity.EXTRA_CONTACT_ID, contact.id)
+            putExtra(ChatActivity.EXTRA_CONTACT_NAME, contact.name)
+        }
+        startActivity(intent)
     }
 
     @Composable
@@ -189,7 +323,10 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun ContactsScreen(contacts: List<Contact>) {
+    fun ContactsScreen(
+        contacts: List<Contact>,
+        onContactClick: (Contact) -> Unit
+    ) {
         if (contacts.isEmpty()) {
             Text(
                 text = "No contacts yet.\nTap + to add a contact.",
@@ -202,7 +339,12 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(contacts) { contact ->
-                    ContactItem(contact.name, contact.lastMessage)
+                    ContactItem(
+                        name = contact.name,
+                        lastMessage = contact.lastMessage,
+                        hasSession = contact.hasSession,
+                        onClick = { onContactClick(contact) }
+                    )
                 }
             }
         }
@@ -239,9 +381,15 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun ContactItem(name: String, lastMessage: String) {
+    fun ContactItem(
+        name: String, 
+        lastMessage: String,
+        hasSession: Boolean,
+        onClick: () -> Unit
+    ) {
         Card(
-            Modifier
+            onClick = onClick,
+            modifier = Modifier
                 .fillMaxWidth()
                 .height(80.dp)
                 .padding(horizontal = 8.dp)
@@ -254,7 +402,15 @@ class MainActivity : ComponentActivity() {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text(name, style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, style = MaterialTheme.typography.titleMedium)
+                        if (hasSession) {
+                            Text(
+                                " 🔐",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                     if (lastMessage.isNotEmpty()) {
                         Text(
                             lastMessage,

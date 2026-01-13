@@ -22,6 +22,21 @@ interface ApiService {
         val PreKeyID: String
     )
 
+    data class HandshakeBundleRequest(
+        val recipientUsername: String,
+        val senderUsername: String,
+        val ephemeralKey: String,
+        val identityKey: String,
+        val usedOneTimePreKeyId: String?
+    )
+
+    data class HandshakeBundleResponse(
+        val senderUsername: String,
+        val ephemeralKey: String,
+        val identityKey: String,
+        val usedOneTimePreKeyId: String?
+    )
+
     @Headers("Content-Type: application/json")
     @POST("register")
     suspend fun register(@Body registerRequest: RegisterRequest): Response<String>
@@ -29,4 +44,12 @@ interface ApiService {
     @Headers("Content-Type: application/json")
     @GET("getkeys")
     suspend fun getKeys(@Query("username") username: String): Response<KeysResponse>
+
+    @Headers("Content-Type: application/json")
+    @POST("handshake")
+    suspend fun submitHandshake(@Body request: HandshakeBundleRequest): Response<String>
+
+    @Headers("Content-Type: application/json")
+    @GET("handshake")
+    suspend fun getPendingHandshakes(@Query("username") username: String): Response<List<HandshakeBundleResponse>>
 }
