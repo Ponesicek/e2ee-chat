@@ -329,6 +329,7 @@ class X3DHHandshake private constructor(
             )
         }
 
+        //OK
         private fun verifySignedPreKey(
             identityPublicKey: ByteArray,
             signedPreKey: ByteArray,
@@ -345,6 +346,7 @@ class X3DHHandshake private constructor(
             }
         }
 
+        //OK
         private fun generateEphemeralKeyPair(): GeneratedKeyPair {
             val keyGen = X25519KeyPairGenerator().apply {
                 init(X25519KeyGenerationParameters(SecureRandom()))
@@ -355,6 +357,7 @@ class X3DHHandshake private constructor(
             return GeneratedKeyPair(publicKey.encoded, privateKey.encoded)
         }
 
+        //OK
         private fun x25519Agreement(privateKey: ByteArray, publicKey: ByteArray): ByteArray {
             val privateKeyParams = X25519PrivateKeyParameters(privateKey, 0)
             val publicKeyParams = X25519PublicKeyParameters(publicKey, 0)
@@ -363,6 +366,7 @@ class X3DHHandshake private constructor(
             return sharedSecret
         }
 
+        //OK
         private fun convertEd25519PrivateToX25519(ed25519Private: ByteArray): ByteArray {
             val ed25519Params = Ed25519PrivateKeyParameters(ed25519Private, 0)
             val hash = org.bouncycastle.crypto.digests.SHA512Digest()
@@ -378,11 +382,6 @@ class X3DHHandshake private constructor(
         }
 
         private fun convertEd25519PublicToX25519(ed25519Public: ByteArray): ByteArray {
-            val edPoint = Ed25519PublicKeyParameters(ed25519Public, 0)
-            val edY = org.bouncycastle.math.ec.rfc8032.Ed25519.decodePointVar(edPoint.encoded, 0, false, IntArray(8))
-            val xPoint = ByteArray(32)
-            org.bouncycastle.math.ec.rfc7748.X25519Field.decode(edY, 0, IntArray(10))
-
             val y = java.math.BigInteger(1, ed25519Public.reversedArray())
             val one = java.math.BigInteger.ONE
             val p = java.math.BigInteger("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed", 16)
